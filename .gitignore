@@ -71,3 +71,6 @@ storage/ldap_client_tls.key
 /storage/framework/testing
 
 /.phpunit.cache
+.env.prod
+.env.example
+storage/certs/ca-certificate.crt
