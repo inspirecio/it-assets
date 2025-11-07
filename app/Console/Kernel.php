@@ -29,7 +29,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('backup:clean')->daily();
         $schedule->command('auth:clear-resets')->everyFifteenMinutes();
         $schedule->command('saml:clear_expired_nonces')->weekly();
-        $schedule->job(new \App\Jobs\SyncIntuneToSnipeIT)->everySixHours();
+        $schedule->job(new \App\Jobs\SyncIntuneToSnipeIT)->everyHour();
     }
 
     /**

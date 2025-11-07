@@ -43,7 +43,9 @@ class ProcessIntuneDeviceBatch implements ShouldQueue
 
         foreach ($this->devices as $device) {
             try {
+                dump("Processing device in handle(): " . ($device['deviceName'] ?? 'unknown'));
                 $result = $this->syncDeviceToDatabase($device);
+                dump("Sync result in handle(): " . ($result ?: 'false'));
 
                 if ($result) {
                     $synced++;
@@ -57,6 +59,7 @@ class ProcessIntuneDeviceBatch implements ShouldQueue
                 }
             } catch (\Exception $e) {
                 Log::error("Error syncing device {$device['deviceName']}: " . $e->getMessage());
+                dump("Exception in handle(): " . $e->getMessage());
                 $errors++;
             }
         }
@@ -89,72 +92,90 @@ class ProcessIntuneDeviceBatch implements ShouldQueue
             return false;
         }
 
-        // Get or create manufacturer
-        $manufacturer = $this->getOrCreateManufacturer($manufacturerName);
+        // No explicit transaction - let Laravel handle it
+            // Get or create manufacturer
+            $manufacturer = $this->getOrCreateManufacturer($manufacturerName);
 
-        // Get or create model
-        $model = $this->getOrCreateModel($modelName, $manufacturer->id);
+            // Get or create model
+            $model = $this->getOrCreateModel($modelName, $manufacturer->id);
 
-        // Get default status
-        $statusId = $this->getDefaultStatusId();
+            // Get default status
+            $statusId = $this->getDefaultStatusId();
 
-        // Get location (if configured)
-        $locationId = config('snipeit.intune_default_location_id', null);
+            // Get location (if configured)
+            $locationId = config('snipeit.intune_default_location_id', null);
 
-        // Find user by email if configured and available
-        $assignedTo = null;
-        if (config('snipeit.intune_auto_assign_users', false) && $userPrincipalName) {
-            $user = User::where('email', $userPrincipalName)->first();
-            if ($user) {
-                $assignedTo = $user->id;
+            // Find user by email if configured and available
+            $assignedTo = null;
+            if (config('snipeit.intune_auto_assign_users', false) && $userPrincipalName) {
+                $user = User::where('email', $userPrincipalName)->first();
+                if ($user) {
+                    $assignedTo = $user->id;
+                }
             }
-        }
 
-        // Prepare notes
-        $notes = "Synced from Microsoft Intune\n";
-        $notes .= "OS: {$operatingSystem} {$osVersion}\n";
-        $notes .= "Owner Type: {$managedDeviceOwnerType}\n";
-        $notes .= "Enrolled: {$enrolledDateTime}\n";
-        $notes .= "Last Sync: {$lastSyncDateTime}";
-        if ($userPrincipalName) {
-            $notes .= "\nUser: {$userPrincipalName}";
-        }
+            // Prepare notes
+            $notes = "Synced from Microsoft Intune\n";
+            $notes .= "OS: {$operatingSystem} {$osVersion}\n";
+            $notes .= "Owner Type: {$managedDeviceOwnerType}\n";
+            $notes .= "Enrolled: {$enrolledDateTime}\n";
+            $notes .= "Last Sync: {$lastSyncDateTime}";
+            if ($userPrincipalName) {
+                $notes .= "\nUser: {$userPrincipalName}";
+            }
 
-        // Check if asset exists
-        $existingAsset = Asset::where('serial', $serialNumber)
-            ->withTrashed()
-            ->first();
+            // Check if asset exists
+            $existingAsset = Asset::where('serial', $serialNumber)
+                ->withTrashed()
+                ->first();
 
-        $wasCreated = !$existingAsset;
+            $wasCreated = !$existingAsset;
 
-        // Create or update asset
-        $asset = Asset::updateOrCreate(
-            ['serial' => $serialNumber],
-            [
-                'asset_tag' => $serialNumber, // Using serial as asset tag
-                'name' => $deviceName,
-                'model_id' => $model->id,
-                'status_id' => $statusId,
-                'notes' => $notes,
-                'location_id' => $locationId,
-                'assigned_to' => $assignedTo,
-                'assigned_type' => $assignedTo ? User::class : null,
-            ]
-        );
+            // Debug logging
+            Log::info("Attempting to create asset with: model_id={$model->id}, status_id={$statusId}, serial={$serialNumber}");
 
-        // Restore if soft-deleted
-        if ($existingAsset && $existingAsset->trashed()) {
-            $asset->restore();
-            Log::info("Restored soft-deleted asset: {$deviceName} (Serial: {$serialNumber})");
-        }
+            // Verify model exists
+            $modelExists = \App\Models\AssetModel::where('id', $model->id)->whereNull('deleted_at')->exists();
+            $statusExists = \App\Models\Statuslabel::where('id', $statusId)->exists();
+            Log::info("Model exists: " . ($modelExists ? 'yes' : 'no') . ", Status exists: " . ($statusExists ? 'yes' : 'no'));
 
-        if ($wasCreated) {
-            Log::info("Created asset: {$deviceName} (Serial: {$serialNumber})");
-            return 'created';
-        } else {
-            Log::info("Updated asset: {$deviceName} (Serial: {$serialNumber})");
-            return 'updated';
-        }
+            // Create or update asset
+            try {
+                $asset = Asset::updateOrCreate(
+                    ['serial' => $serialNumber],
+                    [
+                        'asset_tag' => $serialNumber, // Using serial as asset tag
+                        'name' => $deviceName,
+                        'model_id' => $model->id,
+                        'status_id' => $statusId,
+                        'notes' => $notes,
+                        'location_id' => $locationId,
+                        'assigned_to' => $assignedTo,
+                        'assigned_type' => $assignedTo ? User::class : null,
+                    ]
+                );
+
+                Log::info("Asset created/updated successfully: ID={$asset->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to create/update asset {$deviceName}: " . $e->getMessage());
+                Log::error("Stack trace: " . $e->getTraceAsString());
+                throw $e;
+            }
+
+            // Restore if soft-deleted
+            if ($existingAsset && $existingAsset->trashed()) {
+                $asset->restore();
+                Log::info("Restored soft-deleted asset: {$deviceName} (Serial: {$serialNumber})");
+            }
+
+            if ($wasCreated) {
+                Log::info("Created asset: {$deviceName} (Serial: {$serialNumber})");
+                return 'created';
+            } else {
+                Log::info("Updated asset: {$deviceName} (Serial: {$serialNumber})");
+                return 'updated';
+            }
+    return \ ? "created" : "updated";
     }
 
     /**
@@ -172,7 +193,7 @@ class ProcessIntuneDeviceBatch implements ShouldQueue
                     'image' => null,
                 ]
             );
-        });
+    return \ ? "created" : "updated";
     }
 
     /**
@@ -198,7 +219,7 @@ class ProcessIntuneDeviceBatch implements ShouldQueue
                     'model_number' => null,
                 ]
             );
-        });
+    return \ ? "created" : "updated";
     }
 
     /**
@@ -218,29 +239,16 @@ class ProcessIntuneDeviceBatch implements ShouldQueue
             }
 
             // Otherwise, create or find "Intune Devices" category
-            $category = Category::where('name', 'Intune Devices')
-                ->where('category_type', 'asset')
-                ->first();
-
-            if (!$category) {
-                $category = new Category();
-                $category->name = 'Intune Devices';
-                $category->category_type = 'asset';
-                $category->require_acceptance = false;
-                $category->use_default_eula = false;
-
-                if (!$category->save()) {
-                    \Log::error('Failed to create Intune Devices category: ' . json_encode($category->getErrors()));
-                    // Fallback to any existing asset category
-                    $category = Category::where('category_type', 'asset')->first();
-                    if (!$category) {
-                        throw new \Exception('No asset categories available and could not create Intune Devices category');
-                    }
-                }
-            }
+            $category = Category::firstOrCreate(
+                ['name' => 'Intune Devices'],
+                [
+                    'name' => 'Intune Devices',
+                    'category_type' => 'asset',
+                ]
+            );
 
             return $category->id;
-        });
+    return \ ? "created" : "updated";
     }
 
     /**
