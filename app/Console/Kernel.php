@@ -30,6 +30,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('auth:clear-resets')->everyFifteenMinutes();
         $schedule->command('saml:clear_expired_nonces')->weekly();
         $schedule->job(new \App\Jobs\SyncIntuneToSnipeIT)->everyHour();
+        $schedule->job(new \App\Jobs\SyncHuntressDataToAssets)->cron('15 * * * *')->withoutOverlapping();
     }
 
     /**

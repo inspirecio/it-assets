@@ -54,6 +54,21 @@ return [
         'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
     ],
 
+    'jamf' => [
+        'url' => env('JAMF_URL'), // e.g., https://yourcompany.jamfcloud.com
+        'username' => env('JAMF_USERNAME'),
+        'password' => env('JAMF_PASSWORD'),
+    ],
+
+    'huntress' => [
+        'url' => env('HUNTRESS_API_URL', 'https://api.huntress.io'),
+        'api_key' => env('HUNTRESS_API_KEY'),
+        'timeout' => env('HUNTRESS_API_TIMEOUT', 15),
+        'chunk_size' => env('HUNTRESS_SYNC_CHUNK_SIZE', 100),
+        'incident_limit' => env('HUNTRESS_INCIDENT_LIMIT', 3),
+        'remediation_limit' => env('HUNTRESS_REMEDIATION_LIMIT', 3),
+    ],
+
     'snipeit' => [
         'url' => env('SNIPEIT_URL'), // e.g., https://your-snipeit.com
         'api_token' => env('SNIPEIT_API_TOKEN'),

@@ -73,9 +73,9 @@ class ImageUploadRequest extends Request
 
         $type = class_basename(get_class($item));
 
-        if (is_null($path)) {
+        if (is_null($path) || $path === '') {
 
-            $path = strtolower(str_plural($type));
+            $path = strtolower(Str::plural($type));
 
             if ($type == 'AssetModel') {
                 $path = 'models';
@@ -88,7 +88,7 @@ class ImageUploadRequest extends Request
         }
 
 
-        if (!Storage::disk('public')->exists($path)) {
+        if ($path && !Storage::disk('public')->exists($path)) {
             Storage::disk('public')->makeDirectory($path);
         }
 
@@ -102,7 +102,7 @@ class ImageUploadRequest extends Request
 
 
                 $ext = $image->guessExtension();
-                $file_name = $type.'-'.$form_fieldname.($item->id ?? '-'.$item->id).'-'.str_random(10).'.'.$ext;
+                $file_name = $type.'-'.$form_fieldname.($item->id ?? '-'.$item->id).'-'.Str::random(10).'.'.$ext;
                 
                 if (($image->getMimeType() == 'image/vnd.microsoft.icon') || ($image->getMimeType() == 'image/x-icon') || ($image->getMimeType() == 'image/avif') || ($image->getMimeType() == 'image/webp')) {
                     // If the file is an icon, webp or avif, we need to just move it since gd doesn't support resizing
