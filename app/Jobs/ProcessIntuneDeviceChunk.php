@@ -11,108 +11,37 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class SyncIntuneToSnipeIT implements ShouldQueue
+class ProcessIntuneDeviceChunk implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $timeout = 300; // 5 minutes timeout (reduced since we're chunking)
+    public $timeout = 300; // 5 minutes per chunk
 
-    public function __construct()
+    protected $devices;
+    protected $chunkNumber;
+
+    public function __construct($devices, $chunkNumber = 0)
     {
-        //
+        $this->devices = $devices;
+        $this->chunkNumber = $chunkNumber;
     }
 
     public function handle()
     {
-        Log::info('Starting Intune to Snipe-IT sync');
+        Log::info("Processing chunk #{$this->chunkNumber} with " . count($this->devices) . " devices");
 
-        try {
-            // Step 1: Get Microsoft Graph access token
-            $graphToken = $this->getGraphAccessToken();
-            
-            if (!$graphToken) {
-                Log::error('Failed to get Microsoft Graph access token');
-                return;
+        $synced = 0;
+        $errors = 0;
+
+        foreach ($this->devices as $device) {
+            if ($this->syncDeviceToSnipeIT($device)) {
+                $synced++;
+            } else {
+                $errors++;
             }
-
-            // Step 2: Fetch devices from Intune
-            $intuneDevices = $this->getIntuneDevices($graphToken);
-            
-            if (empty($intuneDevices)) {
-                Log::warning('No devices found in Intune');
-                return;
-            }
-
-            Log::info('Found ' . count($intuneDevices) . ' devices in Intune');
-
-            // Step 3: Clear cache at the start of sync
-            Cache::forget('snipeit_manufacturers');
-            Cache::forget('snipeit_models');
-
-            // Step 4: Chunk devices and dispatch child jobs
-            $chunkSize = 25; // Process 25 devices per job
-            $chunks = array_chunk($intuneDevices, $chunkSize);
-
-            Log::info('Dispatching ' . count($chunks) . ' chunk jobs (' . $chunkSize . ' devices per chunk)');
-
-            foreach ($chunks as $index => $chunk) {
-                ProcessIntuneDeviceChunk::dispatch($chunk, $index + 1);
-            }
-
-            Log::info('All chunk jobs dispatched successfully');
-
-        } catch (\Exception $e) {
-            Log::error('Intune sync failed: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    /**
-     * Get Microsoft Graph API access token
-     */
-    private function getGraphAccessToken()
-    {
-        $response = Http::asForm()->post('https://login.microsoftonline.com/' . config('services.microsoft.tenant_id') . '/oauth2/v2.0/token', [
-            'client_id' => config('services.microsoft.client_id'),
-            'client_secret' => config('services.microsoft.client_secret'),
-            'scope' => 'https://graph.microsoft.com/.default',
-            'grant_type' => 'client_credentials',
-        ]);
-
-        if ($response->successful()) {
-            return $response->json()['access_token'];
         }
 
-        Log::error('Graph token request failed: ' . $response->body());
-        return null;
-    }
-
-    /**
-     * Fetch managed devices from Intune via Microsoft Graph
-     */
-    private function getIntuneDevices($token)
-    {
-        $devices = [];
-        $url = 'https://graph.microsoft.com/v1.0/deviceManagement/managedDevices';
-
-        do {
-            $response = Http::withToken($token)
-                ->get($url);
-
-            if (!$response->successful()) {
-                Log::error('Failed to fetch Intune devices: ' . $response->body());
-                break;
-            }
-
-            $data = $response->json();
-            $devices = array_merge($devices, $data['value'] ?? []);
-
-            // Handle pagination
-            $url = $data['@odata.nextLink'] ?? null;
-
-        } while ($url);
-
-        return $devices;
+        Log::info("Chunk #{$this->chunkNumber} completed: {$synced} synced, {$errors} errors");
     }
 
     /**
