@@ -48,4 +48,15 @@ return [
         'maps_api_key' => env('GOOGLE_MAPS_API'),
     ],
 
+    'microsoft' => [
+        'tenant_id' => env('MICROSOFT_TENANT_ID'),
+        'client_id' => env('MICROSOFT_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
+    ],
+
+    'snipeit' => [
+        'url' => env('SNIPEIT_URL'), // e.g., https://your-snipeit.com
+        'api_token' => env('SNIPEIT_API_TOKEN'),
+    ]
+
 ];
